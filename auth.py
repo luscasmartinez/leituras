@@ -1,6 +1,20 @@
 import hashlib
+import os
 import secrets
 from database import get_connection
+
+# Senha do usuário master: configure via st.secrets (chave MASTER_PASSWORD)
+# ou variável de ambiente MASTER_PASSWORD. Fallback para uso local.
+_MASTER_PASSWORD_DEFAULT = "Master@2026"
+
+
+def _get_master_password() -> str:
+    # Tenta ler de st.secrets (Streamlit Cloud) sem forçar importação pesada
+    try:
+        import streamlit as st  # noqa: PLC0415
+        return st.secrets.get("MASTER_PASSWORD", os.environ.get("MASTER_PASSWORD", _MASTER_PASSWORD_DEFAULT))
+    except Exception:
+        return os.environ.get("MASTER_PASSWORD", _MASTER_PASSWORD_DEFAULT)
 
 
 def _hash_password(password: str) -> str:
@@ -72,7 +86,7 @@ def ensure_master_user():
     try:
         existing = conn.execute("SELECT id FROM usuarios WHERE is_master=1").fetchone()
         if not existing:
-            senha_hash = _hash_password("Master@2026")
+            senha_hash = _hash_password(_get_master_password())
             conn.execute(
                 "INSERT OR IGNORE INTO usuarios (username, senha_hash, is_master) VALUES (?, ?, 1)",
                 ("master", senha_hash),

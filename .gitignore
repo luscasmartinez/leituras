@@ -1,0 +1,32 @@
+# ── Banco de dados local (recriado automaticamente na inicialização) ─────────
+app.db
+
+# ── Secrets locais do Streamlit (nunca commitar) ────────────────────────────
+.streamlit/secrets.toml
+
+# ── Uploads temporários ──────────────────────────────────────────────────────
+lei_uploads/
+*.xlsx
+!requirements.txt
+
+# ── Ambientes virtuais ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── Python cache ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ── IDEs ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
