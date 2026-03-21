@@ -76,64 +76,83 @@ def show_auth_page():
 
 def page_public():
     """Dashboard público visível sem login."""
-    st.title("📊 Painel de Rotas Pendentes")
+    st.title("📊 Painel de Rotas")
     st.caption("Visualização pública — faça login na barra lateral para acessar o sistema completo.")
 
-    df = query_analitico_faltam()
+    df = query_rotas_joined()
 
-    if df.empty or df["FALTAM_VISITAR"].isna().all():
+    if df.empty:
         st.info("⚠️ Nenhum dado disponível no momento.")
         return
 
-    df["FALTAM_VISITAR"] = pd.to_numeric(df["FALTAM_VISITAR"], errors="coerce").fillna(0)
-    df = df[df["FALTAM_VISITAR"] > 0]
+    # ── Detecta colunas dinâmicas ───────────────────────────────────────────
+    situacao_col = next((c for c in df.columns if "situa" in c.lower()), None)
+    faltam_col   = next((c for c in df.columns if c.upper() == "FALTAM_VISITAR"), None)
+    rota_col     = next((c for c in df.columns if c.upper() == "ROTA"), None)
+    zona_col     = next((c for c in df.columns if c.upper() == "ZONA"), None)
+    cidade_col   = next((c for c in df.columns if c.upper() == "CIDADE"), None)
 
-    grupos = sorted(df["grupo"].dropna().unique().tolist())
-    if not grupos:
-        st.info("⚠️ Nenhum grupo cadastrado.")
+    if cidade_col is None or rota_col is None:
+        st.info("⚠️ Dados incompletos — faça o upload do LEI3020 e do arquivo Regionais.")
         return
 
-    # KPIs gerais
-    c1, c2, c3 = st.columns(3)
-    c1.metric("📦 Grupos", len(grupos))
-    c2.metric("📍 Total Faltam Visitar", f"{int(df['FALTAM_VISITAR'].sum()):,}".replace(",", "."))
-    c3.metric("🏙️ Cidades com pendência", df["CIDADE"].nunique())
+    if faltam_col:
+        df[faltam_col] = pd.to_numeric(df[faltam_col], errors="coerce").fillna(0)
+
+    def _is_agendado(val):
+        return "AGENDAD" in str(val).upper()
+
+    n_agendado    = int(df[situacao_col].apply(_is_agendado).sum()) if situacao_col else 0
+    total_faltam  = int(df[faltam_col].sum()) if faltam_col else 0
+    total_cidades = df[cidade_col].nunique()
+    total_rotas   = len(df)
+
+    # ── KPIs ───────────────────────────────────────────────────────────────
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🏙️ Cidades",             total_cidades)
+    c2.metric("🛣️ Total de Rotas",       total_rotas)
+    c3.metric("📍 Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
+    c4.metric("📅 Rotas Agendadas",      n_agendado)
 
     st.divider()
 
-    # Um expander por grupo
+    # ── Colunas a exibir por rota (cidade como coluna na linha) ────────────
+    desired = [cidade_col, zona_col, rota_col, faltam_col, situacao_col,
+               "SUPERVISOR_COMERCIAL", "ENCARREGADO_COMERCIAL"]
+    cols_rota = [c for c in desired if c and c in df.columns]
+
+    # ── Highlight: somente linhas AGENDADO ficam amarelas ──────────────────
+    def _highlight_row(row):
+        if situacao_col and _is_agendado(row.get(situacao_col, "")):
+            return ["background-color: #FFF3CD; color: #856404; font-weight: bold"] * len(row)
+        return [""] * len(row)
+
+    # ── Um expander por grupo ──────────────────────────────────────────────
+    grupos = sorted(df["grupo"].dropna().unique().tolist()) if "grupo" in df.columns else ["(sem grupo)"]
+
     for grupo in grupos:
-        df_g = df[df["grupo"] == grupo]
-        total_g = int(df_g["FALTAM_VISITAR"].sum())
+        df_g = df[df["grupo"] == grupo].copy() if "grupo" in df.columns else df.copy()
 
-        df_cidade = (
-            df_g.groupby("CIDADE", dropna=False)["FALTAM_VISITAR"]
-            .sum()
-            .reset_index()
-            .sort_values("FALTAM_VISITAR", ascending=False)
-        )
-        df_cidade.columns = ["Cidade", "Faltam Visitar"]
-        df_cidade = df_cidade[df_cidade["Faltam Visitar"] > 0]
+        total_g  = int(df_g[faltam_col].sum()) if faltam_col else 0
+        n_ag_g   = int(df_g[situacao_col].apply(_is_agendado).sum()) if situacao_col else 0
+        cidades_g = df_g[cidade_col].nunique()
 
-        with st.expander(
-            f"📦 {grupo}  —  Total Faltam Visitar: {total_g:,}".replace(",", "."),
-            expanded=False,
-        ):
-            col_t, col_c = st.columns([1, 2])
-            with col_t:
-                st.dataframe(df_cidade, use_container_width=True, hide_index=True)
-            with col_c:
-                if not df_cidade.empty:
-                    fig = px.bar(
-                        df_cidade,
-                        x="Cidade",
-                        y="Faltam Visitar",
-                        color="Faltam Visitar",
-                        color_continuous_scale="Reds",
-                        title=f"Faltam Visitar por Cidade — {grupo}",
-                    )
-                    fig.update_layout(xaxis_tickangle=-45, showlegend=False)
-                    st.plotly_chart(fig, use_container_width=True)
+        badge = f"  |  📅 {n_ag_g} agendada(s)" if n_ag_g > 0 else ""
+        label = (
+            f"📦 {grupo}  —  {cidades_g} cidade(s)  |  "
+            f"Faltam Visitar: {total_g:,}{badge}"
+        ).replace(",", ".")
+
+        df_show = df_g[cols_rota].copy()
+        if faltam_col and faltam_col in df_show.columns:
+            df_show = df_show.sort_values([cidade_col, faltam_col], ascending=[True, False])
+
+        with st.expander(label, expanded=(n_ag_g > 0)):
+            st.dataframe(
+                df_show.style.apply(_highlight_row, axis=1),
+                use_container_width=True,
+                hide_index=True,
+            )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -403,6 +422,46 @@ def page_analises():
                     title=f"Proporção por {situacao_col}",
                 )
                 st.plotly_chart(fig_pie, use_container_width=True)
+
+                # ── Destaque: Rotas Agendadas ──────────────────────────────
+                st.divider()
+                st.subheader("📅 Rotas Agendadas")
+
+                df_agendado = df_rotas[
+                    df_rotas[situacao_col].astype(str).str.upper().str.contains("AGENDAD", na=False)
+                ]
+                total_agendado = len(df_agendado)
+
+                if total_agendado == 0:
+                    st.info("Nenhuma rota com situação 'AGENDADO' encontrada.")
+                else:
+                    st.metric("📅 Total de Rotas Agendadas", total_agendado)
+
+                    cols_show = [c for c in df_agendado.columns if c not in ("id", "us_id", "data_upload")]
+
+                    def _highlight_agendado(row):
+                        return ["background-color: #FFF3CD; color: #856404"] * len(row)
+
+                    styled = df_agendado[cols_show].style.apply(_highlight_agendado, axis=1)
+                    st.dataframe(styled, use_container_width=True, height=400)
+
+                    col_csv, col_xlsx = st.columns(2)
+                    with col_csv:
+                        st.download_button(
+                            "⬇️ Baixar CSV (Agendadas)",
+                            data=dataframe_to_csv(df_agendado[cols_show]),
+                            file_name="rotas_agendadas.csv",
+                            mime="text/csv",
+                            key="dl_agendado_csv",
+                        )
+                    with col_xlsx:
+                        st.download_button(
+                            "⬇️ Baixar Excel (Agendadas)",
+                            data=dataframe_to_excel(df_agendado[cols_show]),
+                            file_name="rotas_agendadas.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_agendado_xlsx",
+                        )
             else:
                 st.warning("Coluna de Situação não encontrada nos dados de Rotas.")
 
