@@ -99,6 +99,29 @@ def page_public():
     if faltam_col:
         df[faltam_col] = pd.to_numeric(df[faltam_col], errors="coerce").fillna(0)
 
+    macro_col = next((c for c in df.columns if c.upper() == "MACRO"), None)
+    micro_col = next((c for c in df.columns if c.upper() == "MICRO"), None)
+
+    # ── Filtros por MACRO e MICRO ──────────────────────────────────────────
+    with st.expander("🔍 Filtros", expanded=False):
+        fcol1, fcol2 = st.columns(2)
+        with fcol1:
+            if macro_col and df[macro_col].dropna().nunique() > 0:
+                macros_disp = sorted(df[macro_col].dropna().unique().tolist())
+                macros_sel = st.multiselect("🗺️ MACRO:", macros_disp, key="pub_macro_sel")
+                if macros_sel:
+                    df = df[df[macro_col].isin(macros_sel)]
+            else:
+                st.caption("Coluna MACRO não disponível.")
+        with fcol2:
+            if micro_col and df[micro_col].dropna().nunique() > 0:
+                micros_disp = sorted(df[micro_col].dropna().unique().tolist())
+                micros_sel = st.multiselect("📍 MICRO:", micros_disp, key="pub_micro_sel")
+                if micros_sel:
+                    df = df[df[micro_col].isin(micros_sel)]
+            else:
+                st.caption("Coluna MICRO não disponível.")
+
     def _is_agendado(val):
         return "AGENDAD" in str(val).upper()
 
@@ -109,10 +132,10 @@ def page_public():
 
     # ── KPIs ───────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(" Cidades",             total_cidades)
-    c2.metric(" Total de Rotas",       total_rotas)
-    c3.metric(" Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
-    c4.metric(" Rotas Agendadas",      n_agendado)
+    c1.metric("🏙️ Cidades",             total_cidades)
+    c2.metric("🛣️ Total de Rotas",       total_rotas)
+    c3.metric("📍 Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
+    c4.metric("📅 Rotas Agendadas",      n_agendado)
 
     st.divider()
 
@@ -133,13 +156,13 @@ def page_public():
     for grupo in grupos:
         df_g = df[df["grupo"] == grupo].copy() if "grupo" in df.columns else df.copy()
 
-        total_g  = int(df_g[faltam_col].sum()) if faltam_col else 0
-        n_ag_g   = int(df_g[situacao_col].apply(_is_agendado).sum()) if situacao_col else 0
+        total_g   = int(df_g[faltam_col].sum()) if faltam_col else 0
+        n_ag_g    = int(df_g[situacao_col].apply(_is_agendado).sum()) if situacao_col else 0
         cidades_g = df_g[cidade_col].nunique()
 
         badge = f"  |  📅 {n_ag_g} agendada(s)" if n_ag_g > 0 else ""
         label = (
-            f" {grupo}  —  {cidades_g} cidade(s)  |  "
+            f"📦 {grupo}  —  {cidades_g} cidade(s)  |  "
             f"Faltam Visitar: {total_g:,}{badge}"
         ).replace(",", ".")
 
