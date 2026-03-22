@@ -10,7 +10,7 @@ from auth import register_user, authenticate_user, ensure_master_user, change_us
 from utils import load_regionais_excel, load_lei_excel, dataframe_to_csv, dataframe_to_excel, REGIONAIS_FILE
 
 # ── Configuração da página ──────────────────────────────────────────────────
-st.set_page_config(page_title="Sistema de Rotas e Regionais", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Sistema de Rotas e Regionais", layout="wide", page_icon="")
 
 # ── Inicializar banco de dados ──────────────────────────────────────────────
 init_db()
@@ -76,7 +76,7 @@ def show_auth_page():
 
 def page_public():
     """Dashboard público visível sem login."""
-    st.title("📊 Painel de Rotas")
+    st.title(" Painel de Rotas")
     st.caption("Visualização pública — faça login na barra lateral para acessar o sistema completo.")
 
     df = query_rotas_joined()
@@ -109,10 +109,10 @@ def page_public():
 
     # ── KPIs ───────────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🏙️ Cidades",             total_cidades)
-    c2.metric("🛣️ Total de Rotas",       total_rotas)
-    c3.metric("📍 Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
-    c4.metric("📅 Rotas Agendadas",      n_agendado)
+    c1.metric(" Cidades",             total_cidades)
+    c2.metric(" Total de Rotas",       total_rotas)
+    c3.metric(" Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
+    c4.metric(" Rotas Agendadas",      n_agendado)
 
     st.divider()
 
@@ -139,7 +139,7 @@ def page_public():
 
         badge = f"  |  📅 {n_ag_g} agendada(s)" if n_ag_g > 0 else ""
         label = (
-            f"📦 {grupo}  —  {cidades_g} cidade(s)  |  "
+            f" {grupo}  —  {cidades_g} cidade(s)  |  "
             f"Faltam Visitar: {total_g:,}{badge}"
         ).replace(",", ".")
 
@@ -331,10 +331,10 @@ def page_analises():
         return
 
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📈 Por Região",
-        "📊 Situação das Rotas",
-        "📋 Resumo Regionais",
-        "🔍 Faltam Visitar",
+        " Por Região",
+        " Situação das Rotas",
+        " Resumo Regionais",
+        " Faltam Visitar",
     ])
 
     # ── Tab 1: Análises por Região ──────────────────────────────────────────
@@ -425,7 +425,7 @@ def page_analises():
 
                 # ── Destaque: Rotas Agendadas ──────────────────────────────
                 st.divider()
-                st.subheader("📅 Rotas Agendadas")
+                st.subheader(" Rotas Agendadas")
 
                 df_agendado = df_rotas[
                     df_rotas[situacao_col].astype(str).str.upper().str.contains("AGENDAD", na=False)
@@ -435,7 +435,7 @@ def page_analises():
                 if total_agendado == 0:
                     st.info("Nenhuma rota com situação 'AGENDADO' encontrada.")
                 else:
-                    st.metric("📅 Total de Rotas Agendadas", total_agendado)
+                    st.metric(" Total de Rotas Agendadas", total_agendado)
 
                     cols_show = [c for c in df_agendado.columns if c not in ("id", "us_id", "data_upload")]
 
@@ -508,7 +508,7 @@ def page_analises():
             # ── Filtro por Grupo ──────────────────────────────────────────
             grupos_disp = sorted(df_analitico["grupo"].dropna().unique().tolist())
             grupo_sel = st.multiselect(
-                "📦 Filtrar por Grupo:",
+                " Filtrar por Grupo:",
                 grupos_disp,
                 default=grupos_disp,
                 key="analitico_grupo_sel",
@@ -521,9 +521,9 @@ def page_analises():
             total_cidades = df_analitico["CIDADE"].nunique()
 
             c1, c2, c3 = st.columns(3)
-            c1.metric("📍 Total Faltam Visitar", f"{total_faltam:,}".replace(",", "."))
-            c2.metric("🛣️ Rotas com pendência", total_rotas)
-            c3.metric("🏙️ Cidades envolvidas", total_cidades)
+            c1.metric(" Total Faltam Visitar", f"{total_faltam:,}".replace(",", "."))
+            c2.metric(" Rotas com pendência", total_rotas)
+            c3.metric(" Cidades envolvidas", total_cidades)
 
             st.divider()
 
@@ -761,14 +761,14 @@ def page_admin():
 # ═══════════════════════════════════════════════════════════════════════════
 
 def page_banco():
-    st.title("🗄️ Gerenciamento do Banco de Dados")
+    st.title(" Gerenciamento do Banco de Dados")
 
     counts = get_table_counts()
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("👤 Usuários", counts["usuarios"])
-    col2.metric("🗺️ Regionais", counts["regionais"])
-    col3.metric("📦 Rotas", counts["rotas"])
+    col1.metric(" Usuários", counts["usuarios"])
+    col2.metric(" Regionais", counts["regionais"])
+    col3.metric(" Rotas", counts["rotas"])
 
     st.divider()
 
