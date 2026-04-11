@@ -19,6 +19,9 @@ _REGIONAIS_COL_MAP = {
     "CIDADE_S/_ACENTO": "CIDADE",
     "CIDADE_S/ACENTO": "CIDADE",
     "CIDADE_SEM_ACENTO": "CIDADE",
+    "CIDADE_S/_ASCENTO": "CIDADE",   # variante com erro de ortografia
+    "CIDADE_S/ASCENTO": "CIDADE",
+    "GERENTE_MACRO": "GERENTE_MACRO",
     "MUNICIPIO": None,
     "TOTAL_UC": None,
     "COM_MEDICAO": None,

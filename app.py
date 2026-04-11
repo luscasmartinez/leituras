@@ -215,16 +215,20 @@ def page_home():
     with col2:
         st.metric("Registros em Rotas", len(query_rotas()))
 
-    # Upload manual de regionais if table is empty
-    if regionais_is_empty():
-        st.subheader("Upload Manual de Regionais")
-        uploaded = st.file_uploader("Envie o arquivo REGIONAIS.xlsx", type=["xlsx"], key="reg_upload")
+    # Upload de regionais (sempre disponível)
+    with st.expander("📥 Importar Regionais via Excel", expanded=regionais_is_empty()):
+        if not regionais_is_empty():
+            st.warning("⚠️ O upload irá **substituir** todos os dados existentes de Regionais.")
+        uploaded = st.file_uploader("Envie o arquivo Regionais (.xlsx)", type=["xlsx"], key="reg_upload")
         if uploaded is not None:
             try:
-                df = load_regionais_excel(uploaded)
-                insert_regionais(df)
-                st.success(f"✅ Regionais carregadas com sucesso! ({len(df)} registros)")
-                st.rerun()
+                df_reg = load_regionais_excel(uploaded)
+                st.info(f"Arquivo lido: **{len(df_reg)}** linhas, **{len(df_reg.columns)}** colunas.")
+                st.dataframe(df_reg.head(5), use_container_width=True)
+                if st.button("✅ Confirmar importação", type="primary", key="reg_confirm_import"):
+                    insert_regionais(df_reg)
+                    st.success(f"✅ Regionais importadas com sucesso! ({len(df_reg)} registros)")
+                    st.rerun()
             except Exception as e:
                 st.error(f"Erro ao processar o arquivo: {e}")
 
@@ -758,6 +762,25 @@ def page_admin():
 
     # ── Regionais ────────────────────────────────────────────────────────
     with tab_regionais:
+        # === Importar via Excel ===
+        with st.expander("📥 Importar Regionais via Excel", expanded=False):
+            st.warning("⚠️ O upload irá **substituir** todos os dados existentes de Regionais.")
+            uploaded_reg_adm = st.file_uploader(
+                "Envie o arquivo Regionais (.xlsx)", type=["xlsx"], key="admin_reg_upload"
+            )
+            if uploaded_reg_adm is not None:
+                try:
+                    df_import_reg = load_regionais_excel(uploaded_reg_adm)
+                    st.info(f"Arquivo lido: **{len(df_import_reg)}** linhas, **{len(df_import_reg.columns)}** colunas.")
+                    st.dataframe(df_import_reg.head(5), use_container_width=True)
+                    if st.button("✅ Confirmar importação", type="primary", key="admin_reg_confirm_import"):
+                        insert_regionais(df_import_reg)
+                        st.success(f"✅ Regionais importadas! ({len(df_import_reg)} registros)")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao processar o arquivo: {e}")
+
+        st.divider()
         df_reg_adm = query_regionais()
         if df_reg_adm.empty:
             st.info("Sem dados na tabela Regionais.")
