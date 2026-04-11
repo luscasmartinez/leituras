@@ -180,7 +180,7 @@ def page_public():
 
     # ── Colunas a exibir por rota (cidade como coluna na linha) ────────────
     desired = [cidade_col, zona_col, rota_col, faltam_col, situacao_col,
-               transmissao_col, _STATUS_COL if transmissao_col else None,
+               transmissao_col,
                "SUPERVISOR_COMERCIAL", "ENCARREGADO_COMERCIAL"]
     cols_rota = [c for c in desired if c and c in df.columns]
 
