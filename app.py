@@ -236,39 +236,49 @@ def page_home():
 def page_upload():
     st.title("📤 Upload do Arquivo LEI3020")
     st.markdown(
-        "Envie o arquivo **LEI3020.xlsx** para atualizar as rotas de um grupo. "
+        "Envie o arquivo de rotas (ex: **GF 01.xlsx**, **GF 02.xlsx**). "
+        "O nome do grupo será detectado automaticamente pelo nome do arquivo. "
         "Se o grupo já existir, os dados dele serão **substituídos**. "
         "Grupos diferentes coexistem no banco."
     )
 
     grupos_existentes = query_grupos()
-    opcao_grupo = st.radio(
-        "Grupo:",
-        ["Selecionar grupo existente", "Criar novo grupo"],
-        horizontal=True,
-        key="grupo_opcao",
+
+    uploaded = st.file_uploader(
+        "Selecione o arquivo de rotas (.xlsx)",
+        type=["xlsx"],
+        key="lei_upload",
+        help="O nome do grupo será extraído automaticamente do nome do arquivo.",
     )
 
-    if opcao_grupo == "Selecionar grupo existente" and grupos_existentes:
-        grupo = st.selectbox("Grupo existente:", grupos_existentes, key="grupo_sel")
-    else:
+    if uploaded is not None:
+        # Extrai o nome do arquivo sem extensão como grupo padrão
+        nome_arquivo = os.path.splitext(uploaded.name)[0].strip()
+
         grupo = st.text_input(
-            "Nome do novo grupo:",
-            placeholder="Ex: Marcoção Março 2026",
-            key="grupo_novo",
+            "Nome do grupo:",
+            value=nome_arquivo,
+            key="grupo_nome",
+            help="Detectado pelo nome do arquivo. Edite se necessário.",
         ).strip()
 
-    uploaded = st.file_uploader("Selecione o arquivo LEI3020.xlsx", type=["xlsx"], key="lei_upload")
-    if uploaded is not None:
+        if grupos_existentes:
+            st.caption(
+                "Grupos existentes: " + ", ".join(f"**{g}**" for g in grupos_existentes)
+            )
+
         if not grupo:
-            st.warning("⚠️ Informe o nome do grupo antes de continuar.")
+            st.warning("⚠️ O nome do grupo não pode ser vazio.")
         else:
             df, msg = load_lei_excel(uploaded)
             if df is None:
                 st.error(msg)
             else:
-                st.info(f"Arquivo lido: **{len(df)}** linhas, **{len(df.columns)}** colunas.")
-                st.caption(f"Grupo: **{grupo}** {'(será atualizado)' if grupo in grupos_existentes else '(novo)'}")
+                status = "será atualizado" if grupo in grupos_existentes else "novo grupo"
+                st.info(
+                    f"Arquivo: **{uploaded.name}** — {len(df)} linhas, {len(df.columns)} colunas.  "
+                    f"Grupo: **{grupo}** ({status})"
+                )
                 st.dataframe(df.head(10), use_container_width=True)
 
                 if st.button("Confirmar Upload", type="primary"):
