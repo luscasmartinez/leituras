@@ -110,7 +110,8 @@ def page_public():
     agora = datetime.now()
 
     if transmissao_col:
-        df[transmissao_col] = pd.to_datetime(df[transmissao_col], errors="coerce")
+        # dayfirst=True garante que "11/04/2026" seja lido como dia 11, mês 4 (formato BR)
+        df[transmissao_col] = pd.to_datetime(df[transmissao_col], dayfirst=True, errors="coerce")
 
         def _status_transmissao(val):
             if pd.isnull(val):
