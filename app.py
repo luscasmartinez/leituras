@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+from datetime import datetime, timedelta
 
 from database import init_db, insert_regionais, insert_rotas, regionais_is_empty, rotas_is_empty
 from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts
@@ -86,11 +87,15 @@ def page_public():
         return
 
     # ── Detecta colunas dinâmicas ───────────────────────────────────────────
-    situacao_col = next((c for c in df.columns if "situa" in c.lower()), None)
-    faltam_col   = next((c for c in df.columns if c.upper() == "FALTAM_VISITAR"), None)
-    rota_col     = next((c for c in df.columns if c.upper() == "ROTA"), None)
-    zona_col     = next((c for c in df.columns if c.upper() == "ZONA"), None)
-    cidade_col   = next((c for c in df.columns if c.upper() == "CIDADE"), None)
+    situacao_col  = next((c for c in df.columns if "situa" in c.lower()), None)
+    faltam_col    = next((c for c in df.columns if c.upper() == "FALTAM_VISITAR"), None)
+    rota_col      = next((c for c in df.columns if c.upper() == "ROTA"), None)
+    zona_col      = next((c for c in df.columns if c.upper() == "ZONA"), None)
+    cidade_col    = next((c for c in df.columns if c.upper() == "CIDADE"), None)
+    transmissao_col = next(
+        (c for c in df.columns if "transmiss" in c.lower() or "ultima_trans" in c.lower()),
+        None,
+    )
 
     if cidade_col is None or rota_col is None:
         st.info("⚠️ Dados incompletos — faça o upload do LEI3020 e do arquivo Regionais.")
@@ -98,6 +103,27 @@ def page_public():
 
     if faltam_col:
         df[faltam_col] = pd.to_numeric(df[faltam_col], errors="coerce").fillna(0)
+
+    # ── Processa coluna de última transmissão ──────────────────────────────
+    _STATUS_COL = "⚡ Status Transmissão"
+    LIMITE_HORAS = 2
+    agora = datetime.now()
+
+    if transmissao_col:
+        df[transmissao_col] = pd.to_datetime(df[transmissao_col], errors="coerce")
+
+        def _status_transmissao(val):
+            if pd.isnull(val):
+                return "❓ Sem dados"
+            delta = agora - val
+            if delta > timedelta(hours=LIMITE_HORAS):
+                horas = int(delta.total_seconds() // 3600)
+                return f"⚠️ {horas}h atrás"
+            minutos = int(delta.total_seconds() // 60)
+            return f"✅ {minutos}min atrás"
+
+        df[_STATUS_COL] = df[transmissao_col].apply(_status_transmissao)
+        df[transmissao_col] = df[transmissao_col].dt.strftime("%d/%m/%Y %H:%M")
 
     macro_col = next((c for c in df.columns if c.upper() == "MACRO"), None)
     micro_col = next((c for c in df.columns if c.upper() == "MICRO"), None)
@@ -129,24 +155,47 @@ def page_public():
     total_faltam  = int(df[faltam_col].sum()) if faltam_col else 0
     total_cidades = df[cidade_col].nunique()
     total_rotas   = len(df)
+    n_sem_transmissao = (
+        int(df[_STATUS_COL].str.startswith("⚠️").sum())
+        if transmissao_col and _STATUS_COL in df.columns
+        else None
+    )
 
     # ── KPIs ───────────────────────────────────────────────────────────────
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("🏙️ Cidades",             total_cidades)
-    c2.metric("🛣️ Total de Rotas",       total_rotas)
-    c3.metric("📍 Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
-    c4.metric("📅 Rotas Agendadas",      n_agendado)
+    kpi_cols = st.columns(5 if n_sem_transmissao is not None else 4)
+    kpi_cols[0].metric("🏙️ Cidades",             total_cidades)
+    kpi_cols[1].metric("🛣️ Total de Rotas",       total_rotas)
+    kpi_cols[2].metric("📍 Total Faltam Visitar",  f"{total_faltam:,}".replace(",", "."))
+    kpi_cols[3].metric("📅 Rotas Agendadas",      n_agendado)
+    if n_sem_transmissao is not None:
+        kpi_cols[4].metric(
+            "📡 Coletores sem transmissão (+2h)",
+            n_sem_transmissao,
+            delta=None,
+            delta_color="inverse",
+        )
 
     st.divider()
 
     # ── Colunas a exibir por rota (cidade como coluna na linha) ────────────
     desired = [cidade_col, zona_col, rota_col, faltam_col, situacao_col,
+               transmissao_col, _STATUS_COL if transmissao_col else None,
                "SUPERVISOR_COMERCIAL", "ENCARREGADO_COMERCIAL"]
     cols_rota = [c for c in desired if c and c in df.columns]
 
-    # ── Highlight: somente linhas AGENDADO ficam amarelas ──────────────────
+    # ── Highlight: amarelo = agendado, laranja = sem transmissão >2h ───────
     def _highlight_row(row):
-        if situacao_col and _is_agendado(row.get(situacao_col, "")):
+        sem_trans = (
+            transmissao_col
+            and _STATUS_COL in row
+            and str(row.get(_STATUS_COL, "")).startswith("⚠️")
+        )
+        agendado = situacao_col and _is_agendado(row.get(situacao_col, ""))
+        if sem_trans and agendado:
+            return ["background-color: #FFDDC1; color: #7B2D00; font-weight: bold"] * len(row)
+        if sem_trans:
+            return ["background-color: #FDE8D8; color: #7B2D00"] * len(row)
+        if agendado:
             return ["background-color: #FFF3CD; color: #856404; font-weight: bold"] * len(row)
         return [""] * len(row)
 
