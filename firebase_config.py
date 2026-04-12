@@ -13,17 +13,25 @@ def _init_app():
     if firebase_admin._apps:
         return
 
-    # 1) Service account embedded in st.secrets (Streamlit Cloud / secrets.toml)
+    # 1) Service account from st.secrets (Streamlit Cloud dashboard or local secrets.toml)
+    has_key = False
     try:
-        sa = dict(st.secrets["firebase_service_account"])
-        # TOML escapes \n — restore actual newlines in private_key
-        if "\\n" in sa.get("private_key", ""):
-            sa["private_key"] = sa["private_key"].replace("\\n", "\n")
-        cred = credentials.Certificate(sa)
-        firebase_admin.initialize_app(cred)
-        return
-    except (KeyError, Exception):
+        has_key = "firebase_service_account" in st.secrets
+    except Exception:
         pass
+
+    if has_key:
+        try:
+            sa = dict(st.secrets["firebase_service_account"])
+            # TOML stores \n as literal backslash-n — restore real newlines
+            pk = sa.get("private_key", "")
+            if "\\n" in pk:
+                sa["private_key"] = pk.replace("\\n", "\n")
+            cred = credentials.Certificate(sa)
+            firebase_admin.initialize_app(cred)
+            return
+        except Exception as e:
+            raise RuntimeError(f"Erro ao inicializar credenciais Firebase: {e}") from e
 
     # 2) Path to service-account JSON via env var (local development)
     sa_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
@@ -33,9 +41,9 @@ def _init_app():
         return
 
     raise RuntimeError(
-        "Firebase credentials not found.\n"
-        "Add [firebase_service_account] to .streamlit/secrets.toml "
-        "or set GOOGLE_APPLICATION_CREDENTIALS to your service-account JSON path."
+        "Firebase credentials not found. "
+        "Configure [firebase_service_account] in the Streamlit Cloud Secrets dashboard "
+        "(App menu → Settings → Secrets) or add it to .streamlit/secrets.toml locally."
     )
 
 

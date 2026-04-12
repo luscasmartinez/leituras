@@ -14,8 +14,17 @@ from utils import load_regionais_excel, load_lei_excel, dataframe_to_csv, datafr
 st.set_page_config(page_title="Sistema de Rotas e Regionais", layout="wide", page_icon="")
 
 # ── Inicializar banco de dados ──────────────────────────────────────────────
-init_db()
-ensure_master_user()
+try:
+    init_db()
+    ensure_master_user()
+except Exception as _firebase_err:
+    st.error(
+        "🔥 **Erro de configuração do Firebase**\n\n"
+        f"`{_firebase_err}`\n\n"
+        "**No Streamlit Community Cloud**, adicione os secrets pelo painel:\n"
+        "App → ⋮ → Settings → Secrets → cole o conteúdo do `secrets.toml`."
+    )
+    st.stop()
 # ── Session state defaults ──────────────────────────────────────────────────
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
