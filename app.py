@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 
 from database import init_db, insert_regionais, insert_rotas, regionais_is_empty, rotas_is_empty
 from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts
-from database import get_all_users, is_master_user, delete_user, save_rotas_admin, save_regionais_admin
-from auth import register_user, authenticate_user, ensure_master_user, change_user_password
+from database import save_rotas_admin, save_regionais_admin
+from auth import register_user, authenticate_user, ensure_master_user, change_user_password, get_all_users, is_master_user, delete_user
 from utils import load_regionais_excel, load_lei_excel, dataframe_to_csv, dataframe_to_excel, REGIONAIS_FILE
 
 # ── Configuração da página ──────────────────────────────────────────────────
@@ -776,7 +776,7 @@ def page_admin():
             else:
                 user_to_del = st.selectbox("Selecione:", deletable["username"].tolist(), key="del_user_sel")
                 if st.button("🗑️ Excluir usuário", key="btn_del_user"):
-                    uid = int(deletable[deletable["username"] == user_to_del]["id"].values[0])
+                    uid = str(deletable[deletable["username"] == user_to_del]["id"].values[0])
                     delete_user(uid)
                     st.success(f"Usuário '{user_to_del}' excluído.")
                     st.rerun()
@@ -791,7 +791,7 @@ def page_admin():
                     if new_pwd != confirm_pwd:
                         st.error("Senhas não coincidem.")
                     else:
-                        uid = int(df_users[df_users["username"] == user_to_edit]["id"].values[0])
+                        uid = str(df_users[df_users["username"] == user_to_edit]["id"].values[0])
                         ok, msg = change_user_password(uid, new_pwd)
                         if ok:
                             st.success(msg)
@@ -931,10 +931,7 @@ def page_banco():
                 st.rerun()
 
     with tab_usuarios:
-        import pandas as pd
-        conn = __import__("database").get_connection()
-        df_users = pd.read_sql_query("SELECT id, username FROM usuarios", conn)
-        conn.close()
+        df_users = get_all_users()[["id", "username"]]
         st.subheader(f"Tabela Usuários — {len(df_users)} registros")
         if not df_users.empty:
             st.dataframe(df_users, use_container_width=True)

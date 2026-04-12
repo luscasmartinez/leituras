@@ -1,110 +1,145 @@
-import hashlib
 import os
-import secrets
-from database import get_connection
+import requests
+import pandas as pd
+import streamlit as st
+from firebase_admin import auth as fb_auth
+from firebase_config import get_db, get_api_key, _init_app
 
-# Senha do usuário master: configure via st.secrets (chave MASTER_PASSWORD)
-# ou variável de ambiente MASTER_PASSWORD. Fallback para uso local.
+# Internal email domain — users log in with a username; Firebase Auth
+# requires an email, so we use "username@leitura.app" internally.
+_EMAIL_DOMAIN = "leitura.app"
+_MASTER_USERNAME = "master"
 _MASTER_PASSWORD_DEFAULT = "Master@2026"
 
 
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+def _to_email(username: str) -> str:
+    return f"{username.strip().lower()}@{_EMAIL_DOMAIN}"
+
+
 def _get_master_password() -> str:
-    # Tenta ler de st.secrets (Streamlit Cloud) sem forçar importação pesada
     try:
-        import streamlit as st  # noqa: PLC0415
         return st.secrets.get("MASTER_PASSWORD", os.environ.get("MASTER_PASSWORD", _MASTER_PASSWORD_DEFAULT))
     except Exception:
         return os.environ.get("MASTER_PASSWORD", _MASTER_PASSWORD_DEFAULT)
 
 
-def _hash_password(password: str) -> str:
-    """Hash a password with a random salt using SHA-256."""
-    salt = secrets.token_hex(16)
-    hash_val = hashlib.sha256((salt + password).encode("utf-8")).hexdigest()
-    return f"{salt}${hash_val}"
+# ── Public API ───────────────────────────────────────────────────────────────
 
-
-def _verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored salt$hash string."""
-    if "$" not in stored_hash:
-        return False
-    salt, hash_val = stored_hash.split("$", 1)
-    return hashlib.sha256((salt + password).encode("utf-8")).hexdigest() == hash_val
-
-
-def register_user(username: str, password: str, is_master: bool = False) -> tuple[bool, str]:
-    """Register a new user. Returns (success, message)."""
-    if not username or not password:
-        return False, "Usuário e senha são obrigatórios."
-
-    if len(password) < 6:
-        return False, "A senha deve ter pelo menos 6 caracteres."
-
-    conn = get_connection()
+def ensure_master_user():
+    """Create the master user if it doesn't exist in Firebase Auth + Firestore."""
+    _init_app()
+    email = _to_email(_MASTER_USERNAME)
     try:
-        existing = conn.execute(
-            "SELECT id FROM usuarios WHERE username = ?", (username,)
-        ).fetchone()
-        if existing:
-            return False, "Este nome de usuário já está em uso."
-
-        senha_hash = _hash_password(password)
-        conn.execute(
-            "INSERT INTO usuarios (username, senha_hash, is_master) VALUES (?, ?, ?)",
-            (username, senha_hash, 1 if is_master else 0),
-        )
-        conn.commit()
-        return True, "Usuário cadastrado com sucesso!"
-    finally:
-        conn.close()
+        fb_auth.get_user_by_email(email)
+    except fb_auth.UserNotFoundError:
+        user = fb_auth.create_user(email=email, password=_get_master_password())
+        get_db().collection("usuarios").document(user.uid).set({
+            "username": _MASTER_USERNAME,
+            "is_master": True,
+        })
 
 
 def authenticate_user(username: str, password: str) -> tuple[bool, str]:
-    """Authenticate a user. Returns (success, message)."""
+    """Sign in via Firebase Auth REST API. Returns (success, message)."""
     if not username or not password:
         return False, "Usuário e senha são obrigatórios."
 
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT senha_hash FROM usuarios WHERE username = ?", (username,)
-        ).fetchone()
-        if row is None:
-            return False, "Usuário ou senha inválidos."
+    api_key = get_api_key()
+    if not api_key:
+        return False, "API key do Firebase não configurada."
 
-        if _verify_password(password, row["senha_hash"]):
+    url = (
+        "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+        f"?key={api_key}"
+    )
+    try:
+        resp = requests.post(
+            url,
+            json={"email": _to_email(username), "password": password, "returnSecureToken": True},
+            timeout=10,
+        )
+        data = resp.json()
+        if resp.status_code == 200:
             return True, "Login realizado com sucesso!"
-        else:
+        error = data.get("error", {}).get("message", "")
+        if error in ("EMAIL_NOT_FOUND", "INVALID_PASSWORD", "INVALID_LOGIN_CREDENTIALS"):
             return False, "Usuário ou senha inválidos."
-    finally:
-        conn.close()
+        return False, f"Erro de autenticação: {error}"
+    except requests.exceptions.ConnectionError:
+        return False, "Sem conexão com o servidor de autenticação."
+    except Exception as e:
+        return False, f"Erro inesperado: {e}"
 
 
-def ensure_master_user():
-    """Cria o usuário master com credenciais padrão se nenhum master existir."""
-    conn = get_connection()
+def register_user(username: str, password: str, is_master: bool = False) -> tuple[bool, str]:
+    """Create a new user in Firebase Auth + Firestore profile."""
+    if not username or not password:
+        return False, "Usuário e senha são obrigatórios."
+    if len(password) < 6:
+        return False, "A senha deve ter pelo menos 6 caracteres."
+
+    _init_app()
+    email = _to_email(username)
     try:
-        existing = conn.execute("SELECT id FROM usuarios WHERE is_master=1").fetchone()
-        if not existing:
-            senha_hash = _hash_password(_get_master_password())
-            conn.execute(
-                "INSERT OR IGNORE INTO usuarios (username, senha_hash, is_master) VALUES (?, ?, 1)",
-                ("master", senha_hash),
-            )
-            conn.commit()
-    finally:
-        conn.close()
+        fb_auth.get_user_by_email(email)
+        return False, "Este nome de usuário já está em uso."
+    except fb_auth.UserNotFoundError:
+        pass
+    except Exception as e:
+        return False, f"Erro ao verificar usuário: {e}"
+
+    try:
+        user = fb_auth.create_user(email=email, password=password)
+        get_db().collection("usuarios").document(user.uid).set({
+            "username": username,
+            "is_master": is_master,
+        })
+        return True, "Usuário cadastrado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao criar usuário: {e}"
 
 
-def change_user_password(user_id: int, new_password: str) -> tuple[bool, str]:
-    """Altera a senha de um usuário pelo id."""
+def is_master_user(username: str) -> bool:
+    _init_app()
+    try:
+        user = fb_auth.get_user_by_email(_to_email(username))
+        doc = get_db().collection("usuarios").document(user.uid).get()
+        return bool(doc.exists and doc.to_dict().get("is_master", False))
+    except Exception:
+        return False
+
+
+def change_user_password(uid: str, new_password: str) -> tuple[bool, str]:
+    """Update password in Firebase Auth by UID."""
     if len(new_password) < 6:
-        return False, "Senha deve ter pelo menos 6 caracteres."
-    conn = get_connection()
+        return False, "A senha deve ter pelo menos 6 caracteres."
+    _init_app()
     try:
-        senha_hash = _hash_password(new_password)
-        conn.execute("UPDATE usuarios SET senha_hash=? WHERE id=?", (senha_hash, user_id))
-        conn.commit()
+        fb_auth.update_user(uid, password=new_password)
         return True, "Senha alterada com sucesso!"
-    finally:
-        conn.close()
+    except Exception as e:
+        return False, f"Erro ao alterar senha: {e}"
+
+
+def get_all_users() -> pd.DataFrame:
+    """Return all users from Firestore (id = Firebase UID)."""
+    _init_app()
+    docs = get_db().collection("usuarios").stream()
+    rows = [
+        {"id": doc.id, "username": d.get("username", ""), "is_master": int(d.get("is_master", False))}
+        for doc in docs
+        if (d := doc.to_dict()) is not None
+    ]
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=["id", "username", "is_master"])
+
+
+def delete_user(uid: str):
+    """Delete user from Firebase Auth and Firestore."""
+    _init_app()
+    try:
+        fb_auth.delete_user(uid)
+    except Exception:
+        pass
+    get_db().collection("usuarios").document(uid).delete()
