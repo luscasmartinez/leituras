@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 
 from database import init_db, insert_regionais, insert_rotas, regionais_is_empty, rotas_is_empty
-from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts
+from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts, delete_grupo
 from database import save_rotas_admin, save_regionais_admin
 from auth import register_user, authenticate_user, ensure_master_user, change_user_password, get_all_users, is_master_user, delete_user
 from utils import load_regionais_excel, load_lei_excel, dataframe_to_csv, dataframe_to_excel, REGIONAIS_FILE
@@ -101,6 +101,11 @@ def page_public():
     rota_col      = next((c for c in df.columns if c.upper() == "ROTA"), None)
     zona_col      = next((c for c in df.columns if c.upper() == "ZONA"), None)
     cidade_col    = next((c for c in df.columns if c.upper() == "CIDADE"), None)
+    colaborador_col = next(
+        (c for c in df.columns if any(p in c.lower() for p in
+         ["colaborador", "leiturista", "tecnico", "t\u00e9cnico", "lector", "executor", "nome_colab"])),
+        None,
+    )
     transmissao_col = next(
         (c for c in df.columns if "transmiss" in c.lower() or "ultima_trans" in c.lower()),
         None,
@@ -187,8 +192,8 @@ def page_public():
 
     st.divider()
 
-    # ── Colunas a exibir por rota (cidade como coluna na linha) ────────────
-    desired = [cidade_col, zona_col, rota_col, faltam_col, situacao_col,
+    # ── Colunas a exibir por rota ─────────────────────────────────────────────
+    desired = [cidade_col, zona_col, rota_col, colaborador_col, faltam_col, situacao_col,
                transmissao_col,
                "SUPERVISOR_COMERCIAL", "ENCARREGADO_COMERCIAL"]
     cols_rota = [c for c in desired if c and c in df.columns]
@@ -234,6 +239,15 @@ def page_public():
                 df_show.style.apply(_highlight_row, axis=1),
                 use_container_width=True,
                 hide_index=True,
+            )
+            # ── Botão de exportação por grupo ───────────────────────────────────
+            st.download_button(
+                label=f"⬇️ Baixar relatório Excel — {grupo}",
+                data=dataframe_to_excel(df_show),
+                file_name=f"relatorio_{grupo.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"dl_grupo_{grupo}",
+                use_container_width=True,
             )
 
 
@@ -303,6 +317,30 @@ def page_upload():
 
     grupos_existentes = query_grupos()
 
+    # ── Gerenciar grupos existentes ────────────────────────────────────────────────
+    if grupos_existentes:
+        with st.expander(f"🗂️ Gerenciar grupos existentes ({len(grupos_existentes)})", expanded=False):
+            for g in grupos_existentes:
+                col_nome, col_btn = st.columns([6, 1])
+                col_nome.markdown(f"📦 **{g}**")
+                if col_btn.button("🗑️ Excluir", key=f"del_grupo_{g}"):
+                    st.session_state[f"confirm_del_{g}"] = True
+                    st.rerun()
+                if st.session_state.get(f"confirm_del_{g}"):
+                    st.warning(f"Tem certeza que deseja excluir o grupo **{g}**? Esta ação não pode ser desfeita.")
+                    c1, c2 = st.columns(2)
+                    if c1.button("✅ Sim, excluir", key=f"yes_del_{g}", type="primary"):
+                        with st.spinner(f"Excluindo grupo {g}..."):
+                            delete_grupo(g)
+                        st.session_state.pop(f"confirm_del_{g}", None)
+                        st.success(f"✅ Grupo **{g}** excluído com sucesso!")
+                        st.rerun()
+                    if c2.button("❌ Cancelar", key=f"no_del_{g}"):
+                        st.session_state.pop(f"confirm_del_{g}", None)
+                        st.rerun()
+
+    st.divider()
+
     uploaded = st.file_uploader(
         "Selecione o arquivo de rotas (.xlsx)",
         type=["xlsx"],
@@ -322,9 +360,7 @@ def page_upload():
         ).strip()
 
         if grupos_existentes:
-            st.caption(
-                "Grupos existentes: " + ", ".join(f"**{g}**" for g in grupos_existentes)
-            )
+            pass  # grupos já listados no expander acima
 
         if not grupo:
             st.warning("⚠️ O nome do grupo não pode ser vazio.")

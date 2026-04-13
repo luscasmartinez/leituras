@@ -206,6 +206,12 @@ def clear_table(table_name: str):
     _delete_collection(get_db(), table_name)
 
 
+def delete_grupo(grupo: str):
+    """Delete all rotas documents belonging to the given grupo."""
+    db = get_db()
+    _delete_query(db, db.collection("rotas").where("grupo", "==", grupo))
+
+
 def get_table_counts() -> dict:
     db = get_db()
     return {
