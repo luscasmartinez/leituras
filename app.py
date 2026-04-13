@@ -6,25 +6,16 @@ from datetime import datetime, timedelta
 
 from database import init_db, insert_regionais, insert_rotas, regionais_is_empty, rotas_is_empty
 from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts, delete_grupo
-from database import save_rotas_admin, save_regionais_admin
-from auth import register_user, authenticate_user, ensure_master_user, change_user_password, get_all_users, is_master_user, delete_user
+from database import get_all_users, is_master_user, delete_user, save_rotas_admin, save_regionais_admin
+from auth import register_user, authenticate_user, ensure_master_user, change_user_password
 from utils import load_regionais_excel, load_lei_excel, dataframe_to_csv, dataframe_to_excel, REGIONAIS_FILE
 
 # ── Configuração da página ──────────────────────────────────────────────────
 st.set_page_config(page_title="Sistema de Rotas e Regionais", layout="wide", page_icon="")
 
 # ── Inicializar banco de dados ──────────────────────────────────────────────
-try:
-    init_db()
-    ensure_master_user()
-except Exception as _firebase_err:
-    st.error(
-        "🔥 **Erro de configuração do Firebase**\n\n"
-        f"`{_firebase_err}`\n\n"
-        "**No Streamlit Community Cloud**, adicione os secrets pelo painel:\n"
-        "App → ⋮ → Settings → Secrets → cole o conteúdo do `secrets.toml`."
-    )
-    st.stop()
+init_db()
+ensure_master_user()
 # ── Session state defaults ──────────────────────────────────────────────────
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -821,7 +812,7 @@ def page_admin():
             else:
                 user_to_del = st.selectbox("Selecione:", deletable["username"].tolist(), key="del_user_sel")
                 if st.button("🗑️ Excluir usuário", key="btn_del_user"):
-                    uid = str(deletable[deletable["username"] == user_to_del]["id"].values[0])
+                    uid = int(deletable[deletable["username"] == user_to_del]["id"].values[0])
                     delete_user(uid)
                     st.success(f"Usuário '{user_to_del}' excluído.")
                     st.rerun()
@@ -836,7 +827,7 @@ def page_admin():
                     if new_pwd != confirm_pwd:
                         st.error("Senhas não coincidem.")
                     else:
-                        uid = str(df_users[df_users["username"] == user_to_edit]["id"].values[0])
+                        uid = int(df_users[df_users["username"] == user_to_edit]["id"].values[0])
                         ok, msg = change_user_password(uid, new_pwd)
                         if ok:
                             st.success(msg)
