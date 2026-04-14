@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from database import init_db, insert_regionais, insert_rotas, regionais_is_empty, rotas_is_empty
 from database import query_regionais, query_rotas, query_rotas_joined, query_analitico_faltam, query_grupos, clear_table, get_table_counts, delete_grupo
@@ -110,23 +110,32 @@ def page_public():
         df[faltam_col] = pd.to_numeric(df[faltam_col], errors="coerce").fillna(0)
 
     # ── Processa coluna de última transmissão ──────────────────────────────
-    _STATUS_COL = "⚡ Status Transmissão"
+    _STATUS_COL = "⏱️ Sem atualização"
     LIMITE_HORAS = 2
-    agora = datetime.now()
+    # Horário atual em Brasília (UTC-3)
+    agora = (datetime.now(timezone.utc) - timedelta(hours=3)).replace(tzinfo=None)
 
     if transmissao_col:
-        # dayfirst=True garante que "11/04/2026" seja lido como dia 11, mês 4 (formato BR)
-        df[transmissao_col] = pd.to_datetime(df[transmissao_col], dayfirst=True, errors="coerce")
+        # Dado vem em MM/DD/YYYY (formato americano do sistema coletor)
+        df[transmissao_col] = pd.to_datetime(df[transmissao_col], dayfirst=False, errors="coerce")
 
         def _status_transmissao(val):
             if pd.isnull(val):
                 return "❓ Sem dados"
-            delta = agora - val
-            if delta > timedelta(hours=LIMITE_HORAS):
-                horas = int(delta.total_seconds() // 3600)
-                return f"⚠️ {horas}h atrás"
-            minutos = int(delta.total_seconds() // 60)
-            return f"✅ {minutos}min atrás"
+            total_seg = (agora - val).total_seconds()
+            if total_seg < 0:
+                # timestamp está no futuro — dado inconsistente
+                return "❓ Sem dados"
+            if total_seg < 3600:
+                minutos = int(total_seg // 60)
+                icon = "✅" if total_seg < LIMITE_HORAS * 3600 else "⚠️"
+                return f"{icon} {minutos}min atrás"
+            if total_seg < 86400:
+                horas = int(total_seg // 3600)
+                icon = "✅" if horas < LIMITE_HORAS else "⚠️"
+                return f"{icon} {horas}h atrás"
+            dias = int(total_seg // 86400)
+            return f"⚠️ {dias}d atrás"
 
         df[_STATUS_COL] = df[transmissao_col].apply(_status_transmissao)
         df[transmissao_col] = df[transmissao_col].dt.strftime("%d/%m/%Y %H:%M")
@@ -185,7 +194,7 @@ def page_public():
 
     # ── Colunas a exibir por rota ─────────────────────────────────────────────
     desired = [cidade_col, zona_col, rota_col, colaborador_col, faltam_col, situacao_col,
-               transmissao_col,
+               transmissao_col, _STATUS_COL if transmissao_col else None,
                "SUPERVISOR_COMERCIAL", "ENCARREGADO_COMERCIAL"]
     cols_rota = [c for c in desired if c and c in df.columns]
 
