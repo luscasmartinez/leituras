@@ -220,6 +220,14 @@ def page_public():
     for grupo in grupos:
         df_g = df[df["grupo"] == grupo].copy() if "grupo" in df.columns else df.copy()
 
+        # ── Filtrar rotas com faltam_visitar = 0 ──────────────────────────
+        if faltam_col and faltam_col in df_g.columns:
+            df_g = df_g[df_g[faltam_col] > 0]
+
+        # Se não há rotas após filtro, pula este grupo
+        if df_g.empty:
+            continue
+
         total_g   = int(df_g[faltam_col].sum()) if faltam_col else 0
         n_ag_g    = int(df_g[situacao_col].apply(_is_agendado).sum()) if situacao_col else 0
         cidades_g = df_g[cidade_col].nunique()
